@@ -1,0 +1,7 @@
+[package]
+name = "mm"
+version = "0.1.0"
+authors = ["Alexey Gerasev <alexey.gerasev@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
