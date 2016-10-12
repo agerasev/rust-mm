@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 
 #include <SDL2/SDL.h>
 
@@ -9,28 +10,56 @@ typedef Sint16 i16;
 typedef Uint32 u32;
 typedef Sint32 i32;
 
+
+static i32 mm_sys_refcount = 0;
+
+static void mm_sys_init() {
+	if(mm_sys_refcount == 0) {
+		SDL_Init(SDL_INIT_EVERYTHING);
+	}
+	mm_sys_refcount += 1;
+}
+
+static void mm_sys_quit() {
+	if(mm_sys_refcount > 0) {
+		mm_sys_refcount -= 1;
+		if(mm_sys_refcount == 0) {
+			SDL_Quit();
+		}
+	}
+}
+
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 SDL_Texture * texture = NULL;
 
-u32 width = 0, height = 0;
-u32 *pixels = NULL;
+void *pixels = NULL;
+u32 pitch = 0;
 
-u32 color = 0;
+#define MM_ERROR_SIZE 200
 
-u32 mmc_init(u32 w, u32 h) {
-	SDL_Init(SDL_INIT_EVERYTHING);
+static char mm_error[MM_ERROR_SIZE + 1];
 
-	width = w;
-	height = h;
+const char *mm_get_error() {
+	return mm_error;
+}
+
+u32 mm_init(u32 w, u32 h) {
+	if(mm_sys_refcount > 0) {
+		strncpy(mm_error, "You can init system only once", MM_ERROR_SIZE);
+		return 2;
+	}
+
+	mm_sys_init();
+
 	window = SDL_CreateWindow(
 		"SDL2",
 		SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-		width, height, 
-		SDL_WINDOW_SHOWN // | SDL_WINDOW_RESIZABLE
+		w, h, 
+		0 // SDL_WINDOW_RESIZABLE
 		);
 	if(window == NULL) {
-		fprintf(stderr, "%s\n", SDL_GetError());
+		strncpy(mm_error, SDL_GetError(), MM_ERROR_SIZE);
 		goto window_fault;
 	}
 
@@ -40,99 +69,78 @@ u32 mmc_init(u32 w, u32 h) {
 		SDL_RENDERER_ACCELERATED // | SDL_RENDERER_PRESENTVSYNC
 		);
 	if(renderer == NULL) {
-		fprintf(stderr, "%s\n", SDL_GetError());
+		strncpy(mm_error, SDL_GetError(), MM_ERROR_SIZE);
 		goto renderer_fault;
 	}
 
 	texture = SDL_CreateTexture(
 		renderer, 
 		SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 
-		width, height
+		w, h
 		);
 	if(texture == NULL) {
-		fprintf(stderr, "%s\n", SDL_GetError());
+		strncpy(mm_error, SDL_GetError(), MM_ERROR_SIZE);
 		goto texture_fault;
 	}
 
-	pixels = malloc(width*height*sizeof(u32));
+	SDL_LockTexture(texture, NULL, &pixels, &pitch);
 
 	return 0;
 
 texture_fault:
 	SDL_DestroyRenderer(renderer);
-	renderer = NULL;
 renderer_fault:
 	SDL_DestroyWindow(window);
-	window = NULL;
 window_fault:
-	SDL_Quit();
+	mm_sys_quit();
+
+	return 1;
 }
 
-void mmc_quit() {
-	free(pixels);
-	pixels = NULL;
+void mm_quit() {
+	if(mm_sys_refcount > 0) {
+		SDL_DestroyTexture(texture);
+		SDL_DestroyRenderer(renderer);
+		SDL_DestroyWindow(window);
+	}
 
-	SDL_DestroyTexture(texture);
-	texture = NULL;
-
-	SDL_DestroyRenderer(renderer);
-	renderer = NULL;
-
-	SDL_DestroyWindow(window);
-	window = NULL;
-
-	SDL_Quit();
+	mm_sys_quit();
 }
 
-void mmc_get_size(u32 *w, u32 *h) {
-	*w = width;
-	*h = height;
-	// SDL_GetWindowSize(window, w, h);
+void mm_get_size(u32 *w, u32 *h) {
+	SDL_GetWindowSize(window, w, h);
 }
 
-/*
-void mmc_clear() {
-	SDL_RenderClear(renderer);
-}
-
-void mmc_present() {
-	SDL_RenderPresent(renderer);
-}
-*/
-
-void mmc_update() {
-	SDL_UpdateTexture(texture, NULL, pixels, width*sizeof(u32));
+void mm_update() {
+	SDL_UnlockTexture(texture);
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
+	SDL_LockTexture(texture, NULL, &pixels, &pitch);
 }
 
-void mmc_set_color(u8 r, u8 g, u8 b, u8 a) {
-	color = (a << 3*8) | (r << 2*8) | (g << 1*8) | (b << 0*8);
-	// SDL_SetRenderDrawColor(renderer, r, g, b, a);
+void mm_draw_pixel(u32 x, u32 y, u32 color) {
+	*(u32*)((u8*)pixels + pitch*y + 4*x) = color;
 }
 
-void mmc_draw_point(u32 x, u32 y) {
-	pixels[width*y + x] = color;
-	// SDL_RenderDrawPoint(renderer, x, y);
-}
-
-void mmc_sleep(u32 ms) {
-	SDL_Delay(ms);
-}
-
-u32 mmc_handle() {
+u32 mm_handle() {
 	SDL_Event event;
 	while(SDL_PollEvent(&event)) {
 		if(event.type == SDL_QUIT) {
 			return 1;
-		}
-		else
-		if(event.type == SDL_KEYDOWN) {
+		} else if(event.type == SDL_KEYDOWN) {
 			if(event.key.keysym.sym == SDLK_ESCAPE) {
 				return 2;
 			}
 		}
 	}
 	return 0;
+}
+
+void mm_sleep(u32 ms) {
+	SDL_Delay(ms);
+}
+
+u32 mm_get_ticks() {
+	return SDL_GetTicks();
 }
