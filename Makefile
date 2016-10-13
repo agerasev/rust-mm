@@ -1,21 +1,23 @@
+CFLAGS=-IC:/devel/lib/SDL2/include
+CC=gcc
+AR=ar
+
+SRC_DIR=src/mmc
+
+_SRCS=lib.c error.c window.c event.c time.c
+_HEADERS=error.h window.h event.h time.h
+
+_OBJS=$(_SRCS:%.c=%.o)
+SRCS=$(_SRCS:%=$(SRC_DIR)/%)
+HEADERS=$(_HEADERS:%=$(SRC_DIR)/%)
+OBJS=$(_OBJS:%=$(OUT_DIR)/%)
+
 .phony: all
 
 all: $(OUT_DIR)/libmmc.a
 
-$(OUT_DIR)/libmmc.a: $(OUT_DIR)/lib.o $(OUT_DIR)/window.o $(OUT_DIR)/error.o $(OUT_DIR)/time.o $(OUT_DIR)/event.o
-	ar rcs $@ $^
+$(OUT_DIR)/libmmc.a: $(OBJS)
+	$(AR) rcs $@ $^
 
-$(OUT_DIR)/lib.o: src/lib.c
-	gcc -c -fPIC $< -o $@
-
-$(OUT_DIR)/window.o: src/window.c
-	gcc -c -fPIC $< -o $@
-
-$(OUT_DIR)/error.o: src/error.c
-	gcc -c -fPIC $< -o $@
-
-$(OUT_DIR)/time.o: src/time.c
-	gcc -c -fPIC $< -o $@
-
-$(OUT_DIR)/event.o: src/event.c
-	gcc -c -fPIC $< -o $@
+$(OUT_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS)
+	$(CC) -c $< -o $@ $(CFLAGS)

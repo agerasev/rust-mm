@@ -19,7 +19,7 @@ m_Window *m_window_create(u32 w, u32 h) {
 	win->renderer = SDL_CreateRenderer(
 		win->window, 
 		-1, 
-		SDL_RENDERER_ACCELERATED // | SDL_RENDERER_PRESENTVSYNC
+		0 // SDL_RENDERER_ACCELERATED // | SDL_RENDERER_PRESENTVSYNC
 		);
 	if(win->renderer == NULL) {
 		m_set_error(SDL_GetError());
@@ -36,10 +36,14 @@ m_Window *m_window_create(u32 w, u32 h) {
 		goto texture_fault;
 	}
 
-	SDL_LockTexture(win->texture, NULL, &win->pixels, &win->pitch);
+	if(SDL_LockTexture(win->texture, NULL, &win->pixels, &win->pitch) != 0) {
+		m_set_error(SDL_GetError());
+		goto lock_fail;
+	}
 
 	return win;
-
+lock_fail:
+	SDL_DestroyTexture(win->texture);
 texture_fault:
 	SDL_DestroyRenderer(win->renderer);
 renderer_fault:
@@ -60,12 +64,22 @@ void m_window_get_size(const m_Window *win, u32 *w, u32 *h) {
 	SDL_GetWindowSize(win->window, w, h);
 }
 
-void m_window_update(m_Window *win) {
+u32 m_window_update(m_Window *win) {
 	SDL_UnlockTexture(win->texture);
-	SDL_RenderClear(win->renderer);
-	SDL_RenderCopy(win->renderer, win->texture, NULL, NULL);
+	if(SDL_RenderClear(win->renderer) != 0) {
+		m_set_error(SDL_GetError());
+		return 1;
+	}
+	if(SDL_RenderCopy(win->renderer, win->texture, NULL, NULL) != 0) {
+		m_set_error(SDL_GetError());
+		return 2;
+	}
 	SDL_RenderPresent(win->renderer);
-	SDL_LockTexture(win->texture, NULL, &win->pixels, &win->pitch);
+	if(SDL_LockTexture(win->texture, NULL, &win->pixels, &win->pitch) != 0) {
+		m_set_error(SDL_GetError());
+		return 3;
+	}
+	return 0;
 }
 
 void m_window_set_pixel(m_Window *win, u32 x, u32 y, u32 color) {
