@@ -4,73 +4,91 @@ use std::ops::Drop;
 use std::ffi::CString;
 use std::os::raw::c_char;
 
+use std::ptr;
+
+pub enum MWindow {}
+
 extern { 
-	fn mm_init(w: u32, h: u32) -> u32;
-	fn mm_quit();
+	fn m_init();
+	fn m_quit();
 
-	fn mm_get_error() -> *mut c_char;
+	fn m_get_error() -> *mut c_char;
 
-	fn mm_get_size(w: *mut u32, h: *mut u32);
-	
-	fn mm_update();
+	fn m_window_create(w: u32, h: u32) -> *mut MWindow;
+	fn m_window_destroy(win: *mut MWindow);
+	fn m_window_get_size(win: *const MWindow, w: *mut u32, h: *mut u32);
+	fn m_window_update(win: *mut MWindow);
+	fn m_window_set_pixel(win: *mut MWindow, x: u32, y: u32, color: u32);
+	fn m_window_get_pixel(win: *const MWindow, x: u32, y: u32) -> u32;
 
-	fn mm_draw_pixel(x: u32, y: u32, color: u32);
+	fn m_is_closed() -> u32;
 
-	fn mm_handle() -> u32;
+	fn m_sleep(ms: u32);
+	fn m_get_ticks() -> u32;
+}
 
-	fn mm_sleep(ms: u32);
-	fn mm_get_ticks() -> u32;
+pub fn init() {
+	unsafe { m_init(); }
+}
+
+pub fn quit() {
+	unsafe { m_quit(); }
 }
 
 fn get_error() -> CString {
-	unsafe { CString::from_raw(mm_get_error()) }
+	unsafe { CString::from_raw(m_get_error()) }
 }
 
-pub struct System {}
+pub struct Window {
+	win: *mut MWindow,
+}
 
-impl System {
-	pub fn new(w: u32, h: u32) -> Result<System, CString> {
-		let status;
-		unsafe { status = mm_init(w, h); }
-		if status != 0 {
+impl Window {
+	pub fn new(w: u32, h: u32) -> Result<Window, CString> {
+		let winptr;
+		unsafe { winptr = m_window_create(w, h); }
+		if winptr == ptr::null_mut() {
 			return Err(get_error());
 		}
-		let sys = System {};
-		Ok(sys)
+		Ok(Window { win: winptr })
 	}
 }
 
-impl Drop for System {
+impl Drop for Window {
 	fn drop(&mut self) {
-		unsafe { mm_quit(); }
+		unsafe { m_window_destroy(self.win); }
 	}
 }
 
-impl System {
+impl Window {
 	pub fn get_size(&self) -> (u32, u32) {
 		let mut w: u32 = 0;
 		let mut h: u32 = 0;
-		unsafe { mm_get_size(&mut w, &mut h); }
+		unsafe { m_window_get_size(self.win, &mut w, &mut h); }
 		(w, h)
 	}
 
-	pub fn update(&self) {
-		unsafe { mm_update(); }
+	pub fn update(&mut self) {
+		unsafe { m_window_update(self.win); }
 	}
 
-	pub fn draw_pixel(&self, x: u32, y: u32, color: u32) {
-		unsafe { mm_draw_pixel(x, y, color); }
+	pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
+		unsafe { m_window_set_pixel(self.win, x, y, color); }
 	}
 
-	pub fn handle(&self) -> u32 {
-		unsafe { mm_handle() }
-	}
+	pub fn get_pixel(&mut self, x: u32, y: u32) -> u32 {
+		unsafe { m_window_get_pixel(self.win, x, y) }
+	}	
+}
 
-	pub fn sleep(&self, ms: u32) {
-		unsafe { mm_sleep(ms); }
-	}
+pub fn is_closed() -> bool {
+	unsafe { m_is_closed() > 0 }
+}
 
-	pub fn get_ticks(&self) -> u32 {
-		unsafe { mm_get_ticks() }
-	}
+pub fn sleep(ms: u32) {
+	unsafe { m_sleep(ms); }
+}
+
+pub fn get_ticks() -> u32 {
+	unsafe { m_get_ticks() }
 }
